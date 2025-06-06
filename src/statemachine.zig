@@ -10,8 +10,6 @@ const error_state = defs.error_state;
 const accept_state = defs.accept_state;
 const start_state = defs.start_state;
 const ignore_state = defs.ignore_state;
-const single_ops = defs.single_ops;
-const double_ops = defs.double_ops;
 const tipe = defs.tipe;
 const state_type = defs.state_type;
 const string_table = defs.string_table;
@@ -45,53 +43,9 @@ const StateMachine = struct {
         return sm;
     }
 
-    fn allocRestricted(sm: *StateMachine, t: tipe) state_type {
-        const state = sm.tabs_alloc;
-        sm.tabs_alloc += 1;
-        sm.t[state] = t;
-        return state;
-    }
-
-    fn allocPermissive(sm: *StateMachine, t: tipe) state_type {
-        const state = sm.tabs_alloc;
-        sm.tabs_alloc += 1;
-        sm.t[state] = t;
-
-        for (0..biggest_char) |index| {
-            if (!legal_table[index]) {
-                sm.addTransition(state, error_state, index);
-            } else {
-                sm.addTransition(state, accept_state, index);
-            }
-        }
-        return state;
-    }
-
     // Add a transition from one state to another for a specific character
     fn addTransition(sm: *StateMachine, from: state_type, to: state_type, ch: state_type) void {
         sm.tabs[from][ch] = to;
-    }
-
-    //TODO: use table
-    fn addTransitionLegal(sm: *StateMachine, from: state_type, to: state_type) void {
-        for (0..biggest_char) |ch| {
-            if (!legal_table[ch]) continue;
-            sm.tabs[from][@intCast(ch)] = to;
-        }
-    }
-
-    //TODO: use table
-    // Make a state loop back to itself for a specific character
-    fn addSelfLoop(sm: *StateMachine, state: state_type, ch: state_type) void {
-        sm.tabs[state][ch] = state;
-    }
-
-    //TODO: use table
-    fn addSelfLegal(sm: *StateMachine, state: state_type) void {
-        for (0..biggest_char) |ch| {
-            if (!legal_table[ch]) continue;
-            sm.tabs[state][@intCast(ch)] = state;
-        }
     }
 
     // Set all transitions from a state to go to another state
@@ -152,46 +106,6 @@ const StateMachine = struct {
         }
     }
 
-    // Add comment handling (both line and block comments)
-    fn addInvisHandling(sm: *StateMachine) void {
-        const newline_state = sm.allocPermissive(.NEWLINE);
-        const slash_state = sm.allocPermissive(.OP);
-        const block_comment_state = sm.allocRestricted(.invalid);
-        const line_comment_state = sm.allocRestricted(.invalid);
-        const line_comment_leaving_state = sm.allocRestricted(.invalid);
-
-        _ = sm.addTransition(start_state, ignore_state, ' ');
-        _ = sm.addTransition(start_state, newline_state, '\n');
-        _ = sm.addSelfLoop(newline_state, '\n');
-        _ = sm.addSelfLoop(newline_state, ' ');
-        _ = sm.addTransition(newline_state, slash_state, '/');
-        _ = sm.addTransition(start_state, slash_state, '/');
-        _ = sm.addTransition(slash_state, line_comment_state, '/');
-        _ = sm.addSelfLegal(line_comment_state);
-        _ = sm.addTransition(line_comment_state, newline_state, '\n');
-        _ = sm.addTransition(slash_state, block_comment_state, '*');
-        _ = sm.addSelfLegal(block_comment_state);
-        _ = sm.addTransition(block_comment_state, line_comment_leaving_state, '*');
-        _ = sm.addTransitionLegal(line_comment_leaving_state, block_comment_state);
-        _ = sm.addTransition(line_comment_leaving_state, ignore_state, '/');
-    }
-
-    // Add line continuation handling (backslash-newline)
-    fn addLineContinuationHandling(sm: *StateMachine) void {
-        const backslash_state = sm.allocRestricted(.invalid);
-        _ = sm.addTransition(start_state, backslash_state, '\\');
-
-        // Backslash followed by newline is ignored
-        _ = sm.addTransition(backslash_state, ignore_state, '\n');
-
-        // Any other character after backslash is an error
-        for (0..biggest_char) |ch| {
-            if (ch != '\n') {
-                _ = sm.addTransition(backslash_state, error_state, @intCast(ch));
-            }
-        }
-    }
-
     fn allocTipeDefaultTable(sm: *StateMachine, identifier_state: state_type, t: tipe, tab: [biggest_char]bool) state_type {
         const state = sm.tabs_alloc;
         sm.tabs_alloc += 1;
@@ -202,34 +116,6 @@ const StateMachine = struct {
                 sm.addTransition(state, error_state, index);
             } else if (tab[index]) {
                 sm.addTransition(state, identifier_state, index);
-            } else {
-                sm.addTransition(state, accept_state, index);
-            }
-        }
-        return state;
-    }
-
-    fn newStateDefaultTablesInOut(
-        sm: *StateMachine,
-        source_state: state_type,
-        source_table: [biggest_char]bool,
-        dest_state: state_type,
-        dest_table: [biggest_char]bool,
-        t: tipe,
-    ) state_type {
-        const state = sm.tabs_alloc;
-        sm.tabs_alloc += 1;
-        sm.t[state] = t;
-        for (0..biggest_char) |index| {
-            if (source_table[index]) {
-                sm.addTransition(source_state, state, index);
-            }
-        }
-        for (0..biggest_char) |index| {
-            if (dest_table[index]) {
-                sm.addTransition(state, dest_state, index);
-            } else if (!legal_table) {
-                sm.addTransition(state, error_state, index);
             } else {
                 sm.addTransition(state, accept_state, index);
             }
@@ -349,7 +235,7 @@ const StateMachine = struct {
         const string_body = sm.newLoopDefaultTablesOut(
             start_state,
             '{',
-            string_table,
+            content_table,
             .invalid,
         );
         return sm.newStateDefaultTablesOut(

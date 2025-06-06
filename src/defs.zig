@@ -7,7 +7,7 @@ pub const keywords = [_]tipe{ .fieldset, .figcaption, .blockquote, .colgroup, .d
 pub const offset_size = u32;
 pub const value = [2]offset_size;
 
-pub const tabs_needed = 500;
+pub const tabs_needed = 373;
 pub const biggest_char = 256;
 pub const state_type = u16;
 pub const trie_node: type = [biggest_char]state_type;
