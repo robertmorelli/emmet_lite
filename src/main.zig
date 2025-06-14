@@ -1,19 +1,11 @@
 const std = @import("std");
 const lex = @import("lexer.zig");
 const lexprinter = @import("lexprinter.zig");
-const defs = @import("defs.zig");
-pub fn panic(reason: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
-    //TODO recreate line number
-    printLex() catch unreachable;
-    _ = outw.print("reason: {s}\n", .{reason}) catch unreachable;
-    _ = outw.print("last n: {d}, i: {d}, j: {d}\n", .{ lex.n, lex.i, lex.j }) catch unreachable;
-    _ = outw.write("Compilation failed\n") catch unreachable;
-    std.process.exit(0);
-}
+const statemachine = @import("statemachine.zig");
 
 var outw: std.fs.File.Writer = undefined;
-var lex_types: []defs.tipe = undefined;
-var lex_values: []defs.value = undefined;
+var lex_types: []lex.tipe = undefined;
+var lex_values: []statemachine.value = undefined;
 var imp: []u8 = undefined;
 var v1: []u8 = undefined;
 var v2: []u8 = undefined;
@@ -47,25 +39,20 @@ pub fn main() !void {
     //------------
 
     //make lex constructs
-    lex_values = std.heap.page_allocator.alloc(defs.value, imp.len) catch unreachable;
-    lex_types = std.heap.page_allocator.alloc(defs.tipe, imp.len) catch unreachable;
+    lex_values = std.heap.page_allocator.alloc(statemachine.value, imp.len) catch unreachable;
+    lex_types = std.heap.page_allocator.alloc(lex.tipe, imp.len) catch unreachable;
     defer std.heap.page_allocator.free(lex_values);
     defer std.heap.page_allocator.free(lex_types);
     //-------------
-
-    lex.lex(imp, lex_values, lex_types);
+    const n = lex.lsm.run(imp, lex_values, lex_types);
 
     //----
-    try printLex();
-}
-
-fn printLex() !void {
     if (v2[1] == 'l') {
         var allocsize: usize = imp.len;
         allocsize *= 16;
         const lex_out = std.heap.page_allocator.alloc(u8, allocsize) catch @panic("could not allocate for printing");
         defer std.heap.page_allocator.free(lex_out);
-        const len = try lexprinter.lex_print(lex_out, lex_values, lex_types, imp);
+        const len = try lexprinter.lex_print(lex_out, lex_values[0..n], lex_types, imp);
         _ = try std.posix.write(1, lex_out[0..len]);
     }
 }

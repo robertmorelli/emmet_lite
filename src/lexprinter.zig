@@ -1,8 +1,9 @@
 const std = @import("std");
 const lex = @import("lexer.zig");
 const defs = @import("defs.zig");
-const value = defs.value;
-const tipe = defs.tipe;
+const statemachine = @import("statemachine.zig");
+const value = statemachine.value;
+const tipe = lex.tipe;
 
 fn addStringToBuffer(src: []const u8, dst: []u8) usize {
     var i: u32 = 0;
@@ -24,7 +25,7 @@ fn addStringToBuffer(src: []const u8, dst: []u8) usize {
 
 pub fn lex_print(outbuf: []u8, values: []value, types: []tipe, imp: []u8) !usize {
     var index: usize = 0;
-    for (0..lex.n) |i| {
+    for (0..values.len) |i| {
         std.mem.copyForwards(u8, outbuf[index..], @tagName(types[i]));
         index += @tagName(types[i]).len;
         if (types[i] == .string or

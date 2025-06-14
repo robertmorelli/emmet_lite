@@ -1,58 +1,146 @@
 const std = @import("std");
-const sm = @import("statemachine.zig");
-const defs = @import("defs.zig");
-const offset_size = defs.offset_size;
-const state_machine = sm.state_machine;
-const start_state = defs.start_state;
-const error_state = defs.error_state;
-const accept_state = defs.accept_state;
-const ignore_state = defs.ignore_state;
-const value = defs.value;
-const tipe = defs.tipe;
-const state_type = defs.state_type;
+const statemachine = @import("statemachine.zig");
 
-pub var n: offset_size = 0;
-pub var i: offset_size = 0;
-pub var j: offset_size = 0;
+pub const tipe = enum(u8) { start, accept, invalid, ignore, string, content, identifier, number, @"(", @")", @"[", @"]", @">", @"+", @"#", @".", @"=", @"*", a, abbr, address, area, article, aside, audio, b, base, bdi, bdo, blockquote, body, br, button, canvas, caption, cite, code, col, colgroup, data, datalist, dd, del, details, dfn, dialog, div, dl, dt, em, embed, fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, head, header, hgroup, hr, html, i, iframe, img, input, ins, kbd, label, legend, li, link, main, map, mark, meta, meter, nav, noscript, object, ol, optgroup, option, output, p, param, picture, pre, progress, q, rp, rt, ruby, s, samp, script, section, select, slot, small, source, span, strong, style, sub, summary, sup, table, tbody, td, template, textarea, tfoot, th, thead, time, title, tr, track, u, ul, @"var", v, ideo, wbr, eof };
 
-pub fn lex(string: []u8, values: []value, types: []tipe) void {
-    n = 0;
-    i = 0;
-    j = 0;
-    var state: state_type = start_state;
-    l: switch (state_machine.tabs[state][string[j]]) {
-        error_state => {
-            @branchHint(.cold);
-            if (j == string.len - 1) break :l else @panic("death");
-        },
-        accept_state => {
-            values[n] = .{ i, j };
-            types[n] = state_machine.t[state];
-            n = n + 1;
-            i = j;
-            continue :l state_machine.tabs[start_state][string[j]];
-        },
-        ignore_state => {
-            i = j + 1;
-            j = j + 1;
-            continue :l state_machine.tabs[start_state][string[j]];
-        },
-        else => |last_state| {
-            @branchHint(.likely);
-            state = last_state;
-            j = j + 1;
-            continue :l state_machine.tabs[last_state][string[j]];
-        },
+//important! must be longest to shortest
+pub const keywords = [_]tipe{ .fieldset, .figcaption, .blockquote, .colgroup, .datalist, .noscript, .optgroup, .progress, .template, .textarea, .address, .article, .caption, .details, .picture, .section, .summary, .figure, .button, .canvas, .dialog, .footer, .header, .hgroup, .iframe, .legend, .object, .option, .output, .script, .select, .source, .strong, .aside, .audio, .embed, .input, .label, .meter, .param, .small, .style, .table, .tbody, .tfoot, .thead, .title, .track, .abbr, .area, .base, .body, .cite, .code, .data, .form, .head, .html, .link, .main, .mark, .meta, .ruby, .samp, .slot, .span, .time, .ideo, .bdi, .bdo, .col, .del, .dfn, .div, .img, .ins, .kbd, .map, .nav, .pre, .sub, .sup, .@"var", .wbr, .br, .dd, .dl, .dt, .em, .h1, .h2, .h3, .h4, .h5, .h6, .hr, .li, .ol, .rp, .rt, .td, .th, .tr, .ul, .@"(", .@")", .@"[", .@"]", .@">", .@"+", .@"#", .@".", .@"=", .@"*", .a, .b, .i, .p, .q, .s, .u, .v };
+
+const biggest_char = std.math.maxInt(u8) + 1;
+
+pub const identifier_table: [biggest_char]bool = def: {
+    var table: [biggest_char]bool = [1]bool{false} ** biggest_char;
+    for ('a'..'z' + 1) |index| {
+        table[index] = true;
     }
-    if (i != j) {
-        const final_state = state_machine.t[state];
-        if (final_state == .invalid) @panic("death");
-        values[n] = .{ i, j };
-        types[n] = final_state;
-        n = n + 1;
-        i = j;
+    for ('A'..'Z' + 1) |index| {
+        table[index] = true;
     }
-    values[n] = .{ i, j };
-    types[n] = .eof;
-    n = n + 1;
-}
+    for ('0'..'9' + 1) |index| {
+        table[index] = true;
+    }
+    table['-'] = true;
+    table['$'] = true;
+    break :def table;
+};
+
+pub const string_table: [biggest_char]bool = def: {
+    var table: [biggest_char]bool = [1]bool{false} ** biggest_char;
+    for (0x20..0x7E + 1) |index| {
+        if (index != '"') {
+            table[index] = true;
+        }
+    }
+    break :def table;
+};
+
+pub const content_table: [biggest_char]bool = def: {
+    var table: [biggest_char]bool = [1]bool{false} ** biggest_char;
+    for (0x20..0x7E + 1) |index| {
+        if (index != '}') {
+            table[index] = true;
+        }
+    }
+    break :def table;
+};
+
+pub const number_table: [biggest_char]bool = def: {
+    var table: [biggest_char]bool = [1]bool{false} ** biggest_char;
+    for ('0'..'9' + 1) |index| {
+        table[index] = true;
+    }
+    break :def table;
+};
+
+pub const legal_table: [biggest_char]bool = def: {
+    var table: [biggest_char]bool = [1]bool{false} ** biggest_char;
+
+    // Mark identifier characters as legal (true = legal)
+    for ('a'..'z' + 1) |index| {
+        table[index] = true;
+    }
+    for ('A'..'Z' + 1) |index| {
+        table[index] = true;
+    }
+    for ('0'..'9' + 1) |index| {
+        table[index] = true;
+    }
+    table['_'] = true;
+    table['-'] = true;
+    table['$'] = true;
+
+    // Mark operators and punctuation as legal
+    table['('] = true;
+    table[')'] = true;
+    table['['] = true;
+    table[']'] = true;
+    table['>'] = true;
+    table['+'] = true;
+    table['#'] = true;
+    table['.'] = true;
+    table['='] = true;
+    table['*'] = true;
+    table['/'] = true;
+    table['"'] = true;
+    table['{'] = true;
+    table['}'] = true;
+    table['\\'] = true;
+
+    // Mark whitespace as legal
+    table[' '] = true;
+    table['\n'] = true;
+    table['\t'] = true;
+
+    break :def table;
+};
+
+// Create the state machine
+const lsm_type = statemachine.state_machine(
+    373,
+    u16,
+    tipe,
+    &keywords,
+    legal_table,
+    identifier_table,
+);
+pub const lsm: lsm_type = def_lsm: {
+    @setEvalBranchQuota(1000000);
+    var lex_state_machine = lsm_type.init();
+    const identifier_state = lex_state_machine.addIdentifierHandling();
+    _ = lex_state_machine.addKeywords(identifier_state);
+    _ = lex_state_machine.newLoopDefaultTablesInOut(
+        statemachine.start_state,
+        number_table,
+        number_table,
+        .number,
+    );
+    const string_body = lex_state_machine.newLoopDefaultTablesOut(
+        statemachine.start_state,
+        '"',
+        string_table,
+        .invalid,
+    );
+    _ = lex_state_machine.newStateDefaultTablesOut(
+        string_body,
+        '"',
+        statemachine.accept_state,
+        legal_table,
+        .string,
+    );
+    const content_body = lex_state_machine.newLoopDefaultTablesOut(
+        statemachine.start_state,
+        '{',
+        content_table,
+        .invalid,
+    );
+    _ = lex_state_machine.newStateDefaultTablesOut(
+        content_body,
+        '}',
+        statemachine.accept_state,
+        legal_table,
+        .content,
+    );
+    if (lex_state_machine.tabs_alloc != lex_state_machine.tabs.len)
+        @compileError("Over-allocated state machine");
+    break :def_lsm lex_state_machine;
+};
