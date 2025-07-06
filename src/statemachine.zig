@@ -1,14 +1,19 @@
-const lex = @import("lexer.zig");
-const defs = @import("defs.zig");
 const std = @import("std");
+//todo: remove std
 
 const biggest_char = std.math.maxInt(u8) + 1;
 pub const offset_size = u32;
 pub const value = [2]offset_size;
-pub const error_state = 0;
-pub const start_state = 1;
-pub const accept_state = 2;
-pub const ignore_state = 3;
+pub const lex_error_state = 0;
+pub const lex_start_state = 1;
+pub const lex_accept_state = 2;
+pub const lex_ignore_state = 3;
+pub const lex_identifier_state = 4;
+pub const parse_error_state = 5;
+pub const parse_start_state = 6;
+pub const parse_accept_state = 7;
+const sm_initial_allocatable_state = 8;
+//this is a little bit wrong. biggest char is based on u8 instead on tipe. tip needs to be u8 tbh
 pub fn state_machine(
     tabs_needed: comptime_int,
     state_type: type,
@@ -26,19 +31,19 @@ pub fn state_machine(
         pub fn init() @This() {
             var sm: @This() = undefined;
             for (0..tabs_needed) |index| {
-                sm.tabs[index] = [1]state_type{error_state} ** biggest_char;
+                sm.tabs[index] = [1]state_type{lex_error_state} ** biggest_char;
                 sm.t[index] = .invalid;
             }
-            sm.t[error_state] = .invalid;
-            sm.t[start_state] = .start;
-            sm.t[accept_state] = .accept;
-            sm.t[ignore_state] = .ignore;
-            sm.tabs_alloc = ignore_state + 1; // Start after the predefined states
+            sm.t[lex_error_state] = .invalid;
+            sm.t[lex_start_state] = .start;
+            sm.t[lex_accept_state] = .accept;
+            sm.t[lex_ignore_state] = .ignore;
+            sm.tabs_alloc = lex_ignore_state + 1; // Start after the predefined states
 
             // Set up basic transitions
-            setStateLoopAll(&sm, error_state); // Error state loops back to itself
-            setStateTransitionAll(&sm, accept_state, start_state); // Accept -> Start
-            setStateTransitionAll(&sm, ignore_state, start_state); // Ignore -> Start
+            setStateLoopAll(&sm, lex_error_state); // Error state loops back to itself
+            setStateTransitionAll(&sm, lex_accept_state, lex_start_state); // Accept -> Start
+            setStateTransitionAll(&sm, lex_ignore_state, lex_start_state); // Ignore -> Start
 
             return sm;
         }
@@ -65,20 +70,20 @@ pub fn state_machine(
         pub fn addKeywords(sm: *@This(), identifier_state: state_type) void {
             for (keywords) |keyword| {
                 const tag_name = @tagName(keyword);
-                var one = start_state;
+                var one = lex_start_state;
                 var could_be_ident = true;
                 for (tag_name[0 .. tag_name.len - 1]) |ch| {
                     could_be_ident = could_be_ident and identifier_table[ch];
                     const two = sm.tabs[one][ch];
-                    const rejects = two == error_state;
-                    const accepts = two == accept_state;
-                    const loops = two == start_state;
+                    const rejects = two == lex_error_state;
+                    const accepts = two == lex_accept_state;
+                    const loops = two == lex_start_state;
                     const ident = two == identifier_state;
                     if (rejects or accepts or loops or ident) {
                         const three = if (could_be_ident)
                             sm.allocTipeDefaultTable(identifier_state, .identifier, identifier_table)
                         else
-                            sm.allocTipeDefaultTable(error_state, .invalid, identifier_table);
+                            sm.allocTipeDefaultTable(lex_error_state, .invalid, identifier_table);
                         _ = sm.addTransition(one, three, ch);
                         one = three;
                     } else {
@@ -88,15 +93,15 @@ pub fn state_machine(
                 const ch = tag_name[tag_name.len - 1];
                 could_be_ident = could_be_ident and identifier_table[ch];
                 const two = sm.tabs[one][ch];
-                const rejects = two == error_state;
-                const accepts = two == accept_state;
-                const loops = two == start_state;
+                const rejects = two == lex_error_state;
+                const accepts = two == lex_accept_state;
+                const loops = two == lex_start_state;
                 const ident = two == identifier_state;
                 if (rejects or accepts or loops or ident) {
                     const three = if (could_be_ident)
                         sm.allocTipeDefaultTable(identifier_state, keyword, identifier_table)
                     else
-                        sm.allocTipeDefaultTable(accept_state, keyword, legal_table);
+                        sm.allocTipeDefaultTable(lex_accept_state, keyword, legal_table);
                     _ = sm.addTransition(one, three, ch);
                     one = three;
                 } else {
@@ -113,11 +118,11 @@ pub fn state_machine(
 
             for (0..biggest_char) |index| {
                 if (!legal_table[index]) {
-                    sm.addTransition(state, error_state, index);
+                    sm.addTransition(state, lex_error_state, index);
                 } else if (tab[index]) {
                     sm.addTransition(state, identifier_state, index);
                 } else {
-                    sm.addTransition(state, accept_state, index);
+                    sm.addTransition(state, lex_accept_state, index);
                 }
             }
             return state;
@@ -142,9 +147,9 @@ pub fn state_machine(
                 if (dest_table[index]) {
                     sm.addTransition(state, state, index);
                 } else if (!legal_table[index]) {
-                    sm.addTransition(state, error_state, index);
+                    sm.addTransition(state, lex_error_state, index);
                 } else {
-                    sm.addTransition(state, accept_state, index);
+                    sm.addTransition(state, lex_accept_state, index);
                 }
             }
             return state;
@@ -166,9 +171,9 @@ pub fn state_machine(
                 if (dest_table[index]) {
                     sm.addTransition(state, dest_state, index);
                 } else if (!legal_table[index]) {
-                    sm.addTransition(state, error_state, index);
+                    sm.addTransition(state, lex_error_state, index);
                 } else {
-                    sm.addTransition(state, accept_state, index);
+                    sm.addTransition(state, lex_accept_state, index);
                 }
             }
             return state;
@@ -189,9 +194,9 @@ pub fn state_machine(
                 if (dest_table[index]) {
                     sm.addTransition(state, state, index);
                 } else if (!legal_table[index]) {
-                    sm.addTransition(state, error_state, index);
+                    sm.addTransition(state, lex_error_state, index);
                 } else {
-                    sm.addTransition(state, accept_state, index);
+                    sm.addTransition(state, lex_accept_state, index);
                 }
             }
             return state;
@@ -199,7 +204,7 @@ pub fn state_machine(
 
         pub fn addIdentifierHandling(sm: *@This()) state_type {
             return sm.newLoopDefaultTablesInOut(
-                start_state,
+                lex_start_state,
                 identifier_table,
                 identifier_table,
                 .identifier,
@@ -217,9 +222,9 @@ pub fn state_machine(
             var n: offset_size = 0;
             var i: offset_size = 0;
             var j: offset_size = 0;
-            var state: @TypeOf(sm.tabs_alloc) = start_state;
+            var state: @TypeOf(sm.tabs_alloc) = lex_start_state;
             l: switch (sm.tabs[state][string[j]]) {
-                error_state => {
+                lex_error_state => {
                     @branchHint(.cold);
                     if (j != string.len - 1) err(n, i, j);
                     if (j != i) {
@@ -234,17 +239,17 @@ pub fn state_machine(
                     types[n] = .eof;
                     n = n + 1;
                 },
-                accept_state => {
+                lex_accept_state => {
                     values[n] = .{ i, j };
                     types[n] = sm.t[state];
                     n = n + 1;
                     i = j;
-                    continue :l sm.tabs[start_state][string[j]];
+                    continue :l sm.tabs[lex_start_state][string[j]];
                 },
-                ignore_state => {
+                lex_ignore_state => {
                     i = j + 1;
                     j = j + 1;
-                    continue :l sm.tabs[start_state][string[j]];
+                    continue :l sm.tabs[lex_start_state][string[j]];
                 },
                 else => |last_state| {
                     @branchHint(.likely);

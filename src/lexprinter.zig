@@ -1,6 +1,5 @@
 const std = @import("std");
 const lex = @import("lexer.zig");
-const defs = @import("defs.zig");
 const statemachine = @import("statemachine.zig");
 const value = statemachine.value;
 const tipe = lex.tipe;
