@@ -1,3 +1,12 @@
+# Lexer Generator
+
+This is intended to be an extremely high performance lexer generator. There is some legacy code in here from when the lexer was specific to emmet
+
+
+
+
+
+# _OLD STUFF. THIS USED TO BE EMMET LITE BUT NO LONGER_
 # mini emmet
 ## Tokens:
 - group
